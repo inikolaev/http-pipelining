@@ -1,8 +1,10 @@
 import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
-import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -10,7 +12,7 @@ import java.nio.charset.StandardCharsets;
  */
 public class Main {
     public static void main(String[] args) throws IOException {
-        String host = "www.google.com";
+        String host = "www.facebook.com";
         String path = "/";
 
         System.out.println("Resolving hostname");
@@ -20,19 +22,18 @@ public class Main {
 
         System.out.println("Creating client socket");
         SocketFactory factory = SSLSocketFactory.getDefault();
-        Socket socket = factory.createSocket(address.getHostAddress(), 443);
+        SSLSocket socket = (SSLSocket) factory.createSocket(address.getHostAddress(), 443);
         socket.setSoTimeout(250);
         socket.setSendBufferSize(256 * 1024);
         socket.setReceiveBufferSize(256 * 1024);
+        socket.startHandshake();
 
         System.out.println("Preparing request");
-        StringBuilder pipeline = new StringBuilder();
-
+        StringBuilder requests = new StringBuilder();
 
         for (int i = 0; i < 100; i++) {
             boolean close = i == 99;
-            String request = createRequest(host, path, close);
-            pipeline.append(request);
+            requests.append(createRequest(host, path, close));
         }
 
         OutputStream os = socket.getOutputStream();
@@ -42,7 +43,7 @@ public class Main {
         StringBuilder response = new StringBuilder();
 
         System.out.println("Sending request");
-        byte[] sendBuffer = pipeline.toString().getBytes();
+        byte[] sendBuffer = requests.toString().getBytes();
 
         long send = System.currentTimeMillis();
         os.write(sendBuffer);
@@ -64,7 +65,7 @@ public class Main {
                 response.append(new String(buffer, 0, size, StandardCharsets.UTF_8));
             }
         } catch (Exception e) {
-
+            e.printStackTrace();
         }
 
         long end = System.currentTimeMillis();
