@@ -1,8 +1,6 @@
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocketFactory;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -18,31 +16,39 @@ public class Main {
         System.out.println("Resolving hostname");
         InetAddress address = InetAddress.getByName(host);
 
+        System.out.println("Address: " + address.getHostAddress());
+
         System.out.println("Creating client socket");
         SocketFactory factory = SSLSocketFactory.getDefault();
         Socket socket = factory.createSocket(address.getHostAddress(), 443);
         socket.setSoTimeout(250);
+        socket.setSendBufferSize(256 * 1024);
         socket.setReceiveBufferSize(256 * 1024);
 
         System.out.println("Preparing request");
         StringBuilder pipeline = new StringBuilder();
 
+
         for (int i = 0; i < 100; i++) {
-            String request = createRequest(host, path);
+            boolean close = i == 99;
+            String request = createRequest(host, path, close);
             pipeline.append(request);
         }
 
-        DataOutputStream os = new DataOutputStream(socket.getOutputStream());
-        DataInputStream is = new DataInputStream(socket.getInputStream());
+        OutputStream os = socket.getOutputStream();
+        InputStream is = socket.getInputStream();
 
         byte[] buffer = new byte[64 * 1024];
         StringBuilder response = new StringBuilder();
 
         System.out.println("Sending request");
-        String pipelineString = pipeline.toString();
+        byte[] sendBuffer = pipeline.toString().getBytes();
 
-        long start = System.currentTimeMillis();
-        os.writeBytes(pipelineString);
+        long send = System.currentTimeMillis();
+        os.write(sendBuffer);
+
+        long recv = System.currentTimeMillis();
+        long ttfb = 0;
 
         try {
             while (true) {
@@ -51,6 +57,10 @@ public class Main {
                 if (size < 0)
                     break;
 
+                if (ttfb == 0) {
+                    ttfb = System.currentTimeMillis();
+                }
+
                 response.append(new String(buffer, 0, size, StandardCharsets.UTF_8));
             }
         } catch (Exception e) {
@@ -58,17 +68,35 @@ public class Main {
         }
 
         long end = System.currentTimeMillis();
-
-        System.out.printf("Elapsed time: %d\n", (end - start));
-
-        System.out.println(response);
-
         os.close();
         is.close();
         socket.close();
+
+        System.out.printf("Responses received: %d\n", countResponses(response));
+        System.out.printf("Send time:          %d\n", (recv - send));
+        System.out.printf("Time to first byte: %d\n", (ttfb - recv));
+        System.out.printf("Receive time:       %d\n", (end - recv));
+        System.out.printf("Elapsed time:       %d\n", (end - send));
     }
 
-    public static String createRequest(String host, String path) {
-        return String.format("GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, host);
+    public static String createRequest(String host, String path, boolean close) {
+        return String.format("GET %s HTTP/1.1\r\nHost: %s\r\nConnection: %s\r\n\r\n", path, host, close ? "close" : "keep-alive");
+    }
+
+    public static int countResponses(StringBuilder responses) {
+        int pos = 0;
+        int count = 0;
+
+        while (true) {
+            pos = responses.indexOf("HTTP/1.1 302 Found", pos);
+
+            if (pos == -1)
+                break;
+
+            pos += 15;
+            count++;
+        }
+
+        return count;
     }
 }
