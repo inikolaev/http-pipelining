@@ -28,19 +28,18 @@ def count_responses(responses):
 
     return count
 
-
-host = "www.google.com"
+host = "www.facebook.com"
 path = "/"
-request = "".join(request_generator(host, path, 127)).encode()
+request = "".join(request_generator(host, path, 100)).encode()
 response = []
 
 sock = ssl.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
 sock.connect((host, 443))
 
-send = time.clock()
+send = time.perf_counter()
 sock.send(request)
 
-recv = time.clock()
+recv = time.perf_counter()
 ttfb = None
 
 while True:
@@ -50,11 +49,11 @@ while True:
         break
 
     if not ttfb:
-        ttfb = time.clock()
+        ttfb = time.perf_counter()
 
     response.append(buffer)
 
-end = time.clock()
+end = time.perf_counter()
 sock.close()
 
 print("Responses received: {}".format(count_responses(response)))
